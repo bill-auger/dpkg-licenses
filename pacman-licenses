@@ -1,0 +1,72 @@
+#!/usr/bin/env ruby
+
+VERBOSE = ARGV[0] == '-v'
+PACKAGE = (VERBOSE) ? ARGV[1] : ARGV[0]
+if PACKAGE.nil? ; print "no package specified\n" ; exit ; end
+
+# DEBUG
+def dbg msg ; print "#{msg}\n" if false ; end ;
+dbg "PACKAGE=#{PACKAGE}"
+
+
+def fetch_license_and_deps package
+  raise "no package specified" if package.nil?
+
+  print "."
+
+  res = `expac -Sl ',' '%n\n%L\n%E,' #{package}`.split "\n"
+  if res.empty?
+    res = `expac -Ssl ',' '%n\n%L\n%E,\n%S' "^#{package}$"`.split "\n"
+    if res[3] == package
+      package = res[3]
+    else
+      res[1] = '(no such package or provider)'
+    end
+  end
+
+  licenses     = res[1]
+  dependencies = res[2].split ","
+
+  @packages[package] = licenses
+  (licenses.split ",").each do | license |
+    (@licenses[license] ||= []) << package
+  end
+
+dbg "\n\nres=#{res}"
+dbg "package=#{package}"
+dbg "licenses=#{licenses}"
+dbg "dependencies=#{dependencies}"
+#dbg "@packages=#{@packages}"
+#dbg "@licenses=#{@licenses}"
+
+  dependencies.compact.each do | dependency_package |
+    next if @packages.keys.include? dependency_package
+
+    fetch_license_and_deps dependency_package
+  end
+
+dbg "#{package} OUT\n"
+end
+
+def display_report
+  main_licenses = (@packages[PACKAGE].split ",").join "\n\t"
+  print "\n\n#{PACKAGE} licenses:\n\t#{main_licenses}\n"
+  print "\ndependency licenses:\n"
+  @licenses.each_pair do | k , v |
+    print "\t#{k}\n" ; print "\t\t#{v.join ","}\n" if VERBOSE && v != PACKAGE ;
+  end
+
+  return unless VERBOSE
+
+  print "\ndependencies:\n"
+  @packages.each_pair do | k , v |
+    print "\t#{k}\n\t\t#{v}\n" if k != PACKAGE
+  end
+end
+
+
+@packages = {}
+@licenses = {}
+fetch_license_and_deps PACKAGE
+display_report
+
